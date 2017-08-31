@@ -72,6 +72,10 @@ public class Scenario {
 	public int airport25ParkingLimit = 11;
 	public int airport67ParkingLimit = 7;
 	
+	//all straightened flight
+	public List<Flight> straightenedFlightList = new ArrayList<>();
+	public Map<String,Flight> straightenedFlightMap = new HashMap<>();
+	
 	public Scenario() {
 
 	}
@@ -160,6 +164,9 @@ public class Scenario {
 			cf.secondFlight.brotherFlight = cf.firstFlight;
 			
 		}
+		
+		//generate straightend flight list
+		generateStraightenedFlightList(connectingFlightList);
 
 		// 判断某一个机场是否为国内机场
 		for (Flight f : flightList) {
@@ -342,7 +349,21 @@ public class Scenario {
 						ite.candidateFlightList.add(f);
 					}
 				}
-			}		
+			}	
+			
+			for (Flight f : straightenedFlightList) {
+
+				if (f.leg.equals(ite.flight.leg) && f.id != ite.flight.id) {
+					// 判断该航班是否可以承载该行程
+					
+					int earliestT = f.initialTakeoffT - (f.isAllowtoBringForward ? Parameter.MAX_LEAD_TIME : 0);
+					int latestT = f.initialTakeoffT + (f.isDomestic?Parameter.MAX_DELAY_DOMESTIC_TIME:Parameter.MAX_DELAY_INTERNATIONAL_TIME);
+					
+					if(latestT >= ite.flight.initialTakeoffT && earliestT <= ite.flight.initialTakeoffT + 48*60){
+						ite.candidateFlightList.add(f);
+					}
+				}
+			}
 		}
 
 		// 生成flight section itinerary
@@ -512,8 +533,12 @@ public class Scenario {
 				}
 			}
 		}
+		
+		List<Flight> allFlightList = new ArrayList<>();
+		allFlightList.addAll(flightList);
+		allFlightList.addAll(straightenedFlightList);
 
-		for (Flight f : flightList) {
+		for (Flight f : allFlightList) {
 			if (f.isIncludedInTimeWindow) {
 				int earlistT = f.initialTakeoffT;
 				int latestT = f.initialTakeoffT;
@@ -532,7 +557,7 @@ public class Scenario {
 			}
 		}
 
-		for (Flight f : flightList) {
+		for (Flight f : allFlightList) {
 			if (f.isIncludedInTimeWindow) {
 				f.discreteTimePointList.addAll(f.discreteTimePointSet);
 				Collections.sort(f.discreteTimePointList);
@@ -736,6 +761,42 @@ public class Scenario {
 			affectedAirportCoverParkLimitGroundArcMap.put(airportId, gaList);
 		}
 	}
+	
+	//generate all straightened flight leg
+	public void generateStraightenedFlightList(List<ConnectingFlightpair> cpList) {
+		for(ConnectingFlightpair cp:cpList) {
+			if(cp.isAllowStraighten) {
+				//for straightend flight, the fly time can not be decided at this phase, therefore we temporarily set this value as -1
+				int flyTime = -1;
+				
+				//生成联程拉直航班
+				
+				Flight straightenedFlight = new Flight();
+				straightenedFlight.isIncludedInTimeWindow = true;
+				straightenedFlight.isStraightened = true;
+				straightenedFlight.connectingFlightpair = cp;
+				straightenedFlight.leg = cp.straightenLeg;
+				
+				straightenedFlight.flyTime = flyTime;
+						
+				straightenedFlight.initialTakeoffT = cp.firstFlight.initialTakeoffT;
+				straightenedFlight.initialLandingT = straightenedFlight.initialTakeoffT + flyTime;
+				
+				straightenedFlight.isAllowtoBringForward = cp.firstFlight.isAllowtoBringForward;
+				straightenedFlight.isAffected = cp.firstFlight.isAffected;
+				straightenedFlight.isDomestic = true;
+				straightenedFlight.earliestPossibleTime = cp.firstFlight.earliestPossibleTime;
+				straightenedFlight.latestPossibleTime = cp.firstFlight.latestPossibleTime;
+	
+				
+				straightenedFlightList.add(straightenedFlight);
+			}
+		}
+		
+		for(Flight f:straightenedFlightList) {
+			straightenedFlightMap.put(f.connectingFlightpair.firstFlight.id+"_"+f.connectingFlightpair.secondFlight.id, f);
+		}
+	}
 
 	// 读取飞机固定的路径
 	public void readFixedRoutes() {
@@ -766,26 +827,6 @@ public class Scenario {
 			scheduleReader.read(nextLine, this);
 		}
 		
-		//单独处理联程拉直航班
-		for(Aircraft a:aircraftList){
-			
-			for(Flight f1:a.fixedFlightList){
-				
-				if(!f1.actualDestination.equals(f1.leg.destinationAirport)){
-					f1.isStraightened = true;
-					f1.connectingFlightpair = f1.connectingFlightpair;
-					f1.leg = f1.connectingFlightpair.straightenLeg;
-					
-					f1.flyTime = f1.actualLandingT-f1.actualTakeoffT;
-												
-					f1.initialLandingT = f1.initialTakeoffT + f1.flyTime;
-					
-					f1.connectingFlightpair.secondFlight.isStraightened = true;
-					
-					System.out.println("one straightened flight");					
-				}
-			}
-		}
 	}
 	
 }

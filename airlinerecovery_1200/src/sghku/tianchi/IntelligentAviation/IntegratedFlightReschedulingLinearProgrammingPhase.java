@@ -419,7 +419,7 @@ public class IntegratedFlightReschedulingLinearProgrammingPhase {
 			
 			int n1 = totalFlightArcList.size();
 			int n2 = totalConnectingArcList.size();*/
-			networkConstructorBasedOnDelayAndEarlyLimit.eliminateArcs(aircraft, scenario.airportList, totalFlightArcList, totalConnectingArcList, scenario);
+			networkConstructorBasedOnDelayAndEarlyLimit.eliminateArcs(aircraft, scenario.airportList, totalFlightArcList, totalConnectingArcList, scenario, 1);
 			/*int n3 = aircraft.flightArcList.size();
 			int n4 = aircraft.connectingArcList.size();
 			

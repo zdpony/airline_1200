@@ -226,7 +226,7 @@ public class SecondStagePassengerRecovery {
 				totalFlightArcList.addAll(faList);
 			}
 
-			networkConstructorBasedOnDelayAndEarlyLimit.eliminateArcs(aircraft, scenario.airportList, totalFlightArcList, new ArrayList<>(), scenario);
+			networkConstructorBasedOnDelayAndEarlyLimit.eliminateArcs(aircraft, scenario.airportList, totalFlightArcList, new ArrayList<>(), scenario, 1);
 		}
 
 		NetworkConstructor networkConstructor = new NetworkConstructor();
