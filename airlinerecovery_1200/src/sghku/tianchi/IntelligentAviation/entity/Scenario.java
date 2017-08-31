@@ -568,7 +568,7 @@ public class Scenario {
 
 					if (delay1 >= 0 && delay2 >= 0) {
 
-						if (delay2 <= 6 * 60) {
+						/*if (delay2 <= 6 * 60) {
 							fsi.unitCost = 0.1;
 						} else if (delay2 <= 12 * 60 && delay1 >= 6 * 60) {
 							fsi.unitCost = 0.375;
@@ -579,6 +579,18 @@ public class Scenario {
 						}else if (delay2 <= 48 * 60 && delay1 >= 36 * 60) {
 							fsi.unitCost = 2.625;
 						} else {
+							if(delay1 < 48*60){
+								System.out.println("error delay:" + delay1 + " " + delay2);								
+							}
+						}*/
+						//在第一阶段用一种比较粗略的方式
+						if (delay2 <= 24 * 60) {
+							fsi.unitCost = 0.5;
+						} 
+						else if (delay2 <= 48 * 60 && delay1 >= 24 * 60) {
+							fsi.unitCost = 2;
+						}
+						else {
 							if(delay1 < 48*60){
 								System.out.println("error delay:" + delay1 + " " + delay2);								
 							}

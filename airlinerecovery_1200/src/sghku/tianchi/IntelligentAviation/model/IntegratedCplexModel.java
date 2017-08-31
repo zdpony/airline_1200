@@ -77,7 +77,7 @@ public class IntegratedCplexModel {
 				nodeList.add(aircraft.sinkNode);
 			}
 
-			System.out.println("start solving:"+flightArcList.size()+" "+connectingArcList.size()+" "+groundArcList.size()+" "+nodeList.size()+" "+ flightList.size());
+			System.out.println("start solving:"+flightArcList.size()+" "+connectingArcList.size()+" "+groundArcList.size()+" "+nodeList.size()+" "+ flightList.size()+" "+flightSectionList.size()+" "+flightSectionItineraryList.size());
 
 
 			IloNumVar[] x = new IloNumVar[flightArcList.size()];
