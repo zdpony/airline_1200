@@ -383,7 +383,7 @@ public class NetworkConstructorBasedOnDelayAndEarlyLimit {
 	}
 
 	// 生成点和地面arc
-	public void eliminateArcs(Aircraft aircraft, List<Airport> airportList, List<FlightArc> totalFlightArcList, List<ConnectingArc> totalConnectingArcList, Scenario scenario) {
+	public void eliminateArcs(Aircraft aircraft, List<Airport> airportList, List<FlightArc> totalFlightArcList, List<ConnectingArc> totalConnectingArcList, Scenario scenario, int way) {
 		// 2. generate nodes for each arc
 		List<Node> totalNodeList = new ArrayList<>();
 		
@@ -552,292 +552,479 @@ public class NetworkConstructorBasedOnDelayAndEarlyLimit {
 		
 		//update所有选中的flight arc和connecting arc
 		for(FlightArc arc:totalFlightArcList){
-			if(arc.isVisited){
-				arc.fromNode = null;
-				arc.toNode = null;
-				
-				Flight f = arc.flight;
-				if(!f.isIncludedInTimeWindow){
-					
-					f.flightarcList.add(arc);
-					aircraft.flightArcList.add(arc);
-					arc.calculateCost();
-
-					//更新25和67机场的停机约束
-					if (f.leg.destinationAirport.id == 25 && arc.landingTime <= Parameter.airport25_67ParkingLimitStart
-							&& arc.readyTime >= Parameter.airport25_67ParkingLimitEnd) {
-						scenario.airport25ParkingFlightArcList.add(arc);
-					}
-					if (f.leg.destinationAirport.id == 67 && arc.landingTime <= Parameter.airport25_67ParkingLimitStart
-							&& arc.readyTime >= Parameter.airport25_67ParkingLimitEnd) {
-						scenario.airport67ParkingFlightArcList.add(arc);
-					}
-					
-				}else{
-					
-					// 如果是调剂航班，不需要做任何处理
-					if (f.isDeadhead) {
-
-					} else if (f.isStraightened) {
-						// 如果是联程拉直，将该arc加到对应的两段航班中
-						f.connectingFlightpair.firstFlight.flightarcList.add(arc);
-						f.connectingFlightpair.secondFlight.flightarcList.add(arc);
-
-						// 联程拉直航班则没有对应的flight section
-						// 联程拉直乘客容量
-						arc.passengerCapacity = aircraft.passengerCapacity;
-						// 要减去对应的联程乘客
-						arc.passengerCapacity = arc.passengerCapacity - f.connectedPassengerNumber;
-
-						// 其他乘客全部被取消，所以不需要考虑
-						arc.passengerCapacity = Math.max(0, arc.passengerCapacity);
-						
-					} else {
-						f.flightarcList.add(arc);
-
-						// 将该arc加入到对应的flight section中
-						boolean isFound = false;
-						for (FlightSection currentFlightSection : f.flightSectionList) {
-							if (arc.takeoffTime >= currentFlightSection.startTime
-									&& arc.takeoffTime < currentFlightSection.endTime) {
-								isFound = true;
-								currentFlightSection.flightArcList.add(arc);
-
-								break;
-							}
-						}
-
-						if (!isFound) { // check 是否每个arc都放进了一个section
-							if (f.flightSectionList
-									.get(f.flightSectionList.size() - 1).endTime != arc.takeoffTime) {
-								System.out.println("no flight section found 3!"
-										+ f.flightSectionList.get(f.flightSectionList.size() - 1).endTime + " "
-										+ arc.takeoffTime);
-								System.out.println(f.initialTakeoffT+" "+f.isAllowtoBringForward+" "+f.id+"  "+arc.aircraft.id+"   "+f.isIncludedInTimeWindow);
-								for(FlightSection fs:f.flightSectionList){
-									System.out.print("["+fs.startTime+","+fs.endTime+"]  ");
-								}
-								System.out.println();
-								System.exit(1);
-							}
-							f.flightSectionList.get(f.flightSectionList.size() - 1).flightArcList.add(arc);
-						}
-
-						// 乘客容量
-						arc.passengerCapacity = aircraft.passengerCapacity;
-
-						// 减去转乘乘客（首先假设所有的转乘乘客都可以成功转乘）
-						arc.passengerCapacity = arc.passengerCapacity - f.occupiedSeatsByTransferPassenger;
-			
-						if(f.isConnectionFeasible){
-							// 如果该航班是联程航班，则代表联程航班已经被取消，所以不需要在考虑对应的联程乘客
-							arc.passengerCapacity = arc.passengerCapacity - f.connectedPassengerNumber;
-						}
-
-						// 减去普通乘客
-						arc.fulfilledNormalPassenger = Math.min(arc.passengerCapacity, f.normalPassengerNumber);
-						arc.passengerCapacity = arc.passengerCapacity - arc.fulfilledNormalPassenger;
-
-						arc.flight.itinerary.flightArcList.add(arc);
-					}
-
-					arc.calculateCost();
-					aircraft.flightArcList.add(arc);
-					
-					// 加入对应的起降时间点
-
-					if (arc.isWithinAffectedRegionOrigin) {
-						List<FlightArc> faList = scenario.airportTimeFlightArcMap
-								.get(f.leg.originAirport.id + "_" + arc.takeoffTime);
-						faList.add(arc);
-
-					} else if (arc.isWithinAffectedRegionDestination) {
-						List<FlightArc> faList = scenario.airportTimeFlightArcMap
-								.get(f.leg.destinationAirport.id + "_" + arc.landingTime);
-						faList.add(arc);
-
-					}
-
-					// 加入停机约束
-					if (f.leg.destinationAirport.id == 25
-							&& arc.landingTime <= Parameter.airport25_67ParkingLimitStart
-							&& arc.readyTime >= Parameter.airport25_67ParkingLimitEnd) {
-						scenario.airport25ParkingFlightArcList.add(arc);
-					}
-					if (f.leg.destinationAirport.id == 67
-							&& arc.landingTime <= Parameter.airport25_67ParkingLimitStart
-							&& arc.readyTime >= Parameter.airport25_67ParkingLimitEnd) {
-						scenario.airport67ParkingFlightArcList.add(arc);
-					}
-				}
-				
+			if(way == 1) {
+				updateFlightArc(arc, aircraft, scenario);				
+			}else {
+				updateFlightArcSecondWayToConsiderConnectingPassenger(arc, aircraft, scenario);
 			}
 		}
 		
 		for(ConnectingArc ca:totalConnectingArcList){
-			if(ca.isVisited){
-				ca.fromNode = null;
-				ca.toNode = null;
+			updateConnectingArc(ca, aircraft, scenario);
+		}
+	}
+	
+	private void updateFlightArc(FlightArc arc, Aircraft aircraft, Scenario scenario) {
+		if(arc.isVisited){
+			arc.fromNode = null;
+			arc.toNode = null;
+			
+			Flight f = arc.flight;
+			if(!f.isIncludedInTimeWindow){
 				
-				ConnectingFlightpair cf = ca.connectingFlightPair;
+				f.flightarcList.add(arc);
+				aircraft.flightArcList.add(arc);
+				arc.calculateCost();
 
-				if(!cf.firstFlight.isIncludedInTimeWindow){
-					aircraft.connectingArcList.add(ca);
+				//更新25和67机场的停机约束
+				if (f.leg.destinationAirport.id == 25 && arc.landingTime <= Parameter.airport25_67ParkingLimitStart
+						&& arc.readyTime >= Parameter.airport25_67ParkingLimitEnd) {
+					scenario.airport25ParkingFlightArcList.add(arc);
+				}
+				if (f.leg.destinationAirport.id == 67 && arc.landingTime <= Parameter.airport25_67ParkingLimitStart
+						&& arc.readyTime >= Parameter.airport25_67ParkingLimitEnd) {
+					scenario.airport67ParkingFlightArcList.add(arc);
+				}
+				
+			}else{
+				
+				// 如果是调剂航班，不需要做任何处理
+				if (f.isDeadhead) {
 
-					cf.firstFlight.connectingarcList.add(ca);
-					cf.secondFlight.connectingarcList.add(ca);
-					ca.connectingFlightPair = cf;
+				} else if (f.isStraightened) {
+					// 如果是联程拉直，将该arc加到对应的两段航班中
+					f.connectingFlightpair.firstFlight.flightarcList.add(arc);
+					f.connectingFlightpair.secondFlight.flightarcList.add(arc);
 
-					ca.calculateCost();
+					// 联程拉直航班则没有对应的flight section
+					// 联程拉直乘客容量
+					arc.passengerCapacity = aircraft.passengerCapacity;
+					// 要减去对应的联程乘客
+					arc.passengerCapacity = arc.passengerCapacity - f.connectedPassengerNumber;
+
+					// 其他乘客全部被取消，所以不需要考虑
+					arc.passengerCapacity = Math.max(0, arc.passengerCapacity);
 					
-					// 加入25和67停机约束
-					if (cf.firstFlight.leg.destinationAirport.id == 25
-							&& ca.firstArc.landingTime <= Parameter.airport25_67ParkingLimitStart
-							&& ca.secondArc.takeoffTime >= Parameter.airport25_67ParkingLimitEnd) {
-						scenario.airport25ClosureConnectingArcList.add(ca);
-					}
-					if (cf.firstFlight.leg.destinationAirport.id == 67
-							&& ca.firstArc.landingTime <= Parameter.airport25_67ParkingLimitStart
-							&& ca.secondArc.takeoffTime >= Parameter.airport25_67ParkingLimitEnd) {
-						scenario.airport25ClosureConnectingArcList.add(ca);
-					}
-				}else{
-								
-					aircraft.connectingArcList.add(ca);
+				} else {
+					f.flightarcList.add(arc);
 
-					cf.firstFlight.connectingarcList.add(ca);
-					cf.secondFlight.connectingarcList.add(ca);
-					ca.connectingFlightPair = cf;
-
-					ca.calculateCost();
-					
-					if (ca.firstArc.isWithinAffectedRegionOrigin) {
-						List<ConnectingArc> caList = scenario.airportTimeConnectingArcMap
-								.get(ca.firstArc.flight.leg.originAirport.id + "_" + ca.firstArc.takeoffTime);
-						caList.add(ca);
-					}
-					if (ca.firstArc.isWithinAffectedRegionDestination) {
-						List<ConnectingArc> caList = scenario.airportTimeConnectingArcMap
-								.get(ca.firstArc.flight.leg.destinationAirport.id + "_" + ca.firstArc.landingTime);
-						caList.add(ca);
-					}
-
-					if (ca.secondArc.isWithinAffectedRegionOrigin) {
-						List<ConnectingArc> caList = scenario.airportTimeConnectingArcMap
-								.get(ca.secondArc.flight.leg.originAirport.id + "_" + ca.secondArc.takeoffTime);
-
-						caList.add(ca);
-					}
-					if (ca.secondArc.isWithinAffectedRegionDestination) {
-						List<ConnectingArc> caList = scenario.airportTimeConnectingArcMap
-								.get(ca.secondArc.flight.leg.destinationAirport.id + "_" + ca.secondArc.landingTime);
-						caList.add(ca);
-					}
-
-					// 加入25和67停机约束
-					if (cf.firstFlight.leg.destinationAirport.id == 25
-							&& ca.firstArc.landingTime <= Parameter.airport25_67ParkingLimitStart
-							&& ca.secondArc.takeoffTime >= Parameter.airport25_67ParkingLimitEnd) {
-						scenario.airport25ClosureConnectingArcList.add(ca);
-					}
-					if (cf.firstFlight.leg.destinationAirport.id == 67
-							&& ca.firstArc.landingTime <= Parameter.airport25_67ParkingLimitStart
-							&& ca.secondArc.takeoffTime >= Parameter.airport25_67ParkingLimitEnd) {
-						scenario.airport25ClosureConnectingArcList.add(ca);
-					}
-
-					// 设置第一个arc
-					// arc.firstArc.isIncludedInConnecting = true;
-					// arc.firstArc.connectingArcList.add(arc);
-
-					// 乘客容量
-					ca.firstArc.passengerCapacity = aircraft.passengerCapacity;
-					// 减去联程乘客
-					ca.firstArc.passengerCapacity = ca.firstArc.passengerCapacity
-							- cf.firstFlight.connectedPassengerNumber;
-					// 减去转乘乘客
-					ca.firstArc.passengerCapacity = ca.firstArc.passengerCapacity
-							- cf.firstFlight.occupiedSeatsByTransferPassenger;
-
-					// 减去普通乘客
-					ca.firstArc.fulfilledNormalPassenger = Math.min(ca.firstArc.passengerCapacity, cf.firstFlight.normalPassengerNumber);
-					ca.firstArc.passengerCapacity = ca.firstArc.passengerCapacity
-							- ca.firstArc.fulfilledNormalPassenger;
-					
-					ca.firstArc.flight.itinerary.firstConnectionArcList.add(ca);
-					
+					// 将该arc加入到对应的flight section中
 					boolean isFound = false;
-					for (FlightSection currentFlightSection : cf.firstFlight.flightSectionList) {
-						if (ca.firstArc.takeoffTime >= currentFlightSection.startTime
-								&& ca.firstArc.takeoffTime < currentFlightSection.endTime) {
-							// currentFlightSection.flightArcList.add(arc.firstArc);
-							currentFlightSection.connectingFirstArcList.add(ca);
+					for (FlightSection currentFlightSection : f.flightSectionList) {
+						if (arc.takeoffTime >= currentFlightSection.startTime
+								&& arc.takeoffTime < currentFlightSection.endTime) {
 							isFound = true;
+							currentFlightSection.flightArcList.add(arc);
 
 							break;
 						}
 					}
 
-					if (!isFound) {
-						if (ca.firstArc.takeoffTime != cf.firstFlight.flightSectionList
-								.get(cf.firstFlight.flightSectionList.size() - 1).endTime) {
-							System.out.println("no flight section found! " + ca.firstArc.takeoffTime + " "
-									+ cf.firstFlight.flightSectionList
-											.get(cf.firstFlight.flightSectionList.size() - 1).endTime);
+					if (!isFound) { // check 是否每个arc都放进了一个section
+						if (f.flightSectionList
+								.get(f.flightSectionList.size() - 1).endTime != arc.takeoffTime) {
+							System.out.println("no flight section found 3!"
+									+ f.flightSectionList.get(f.flightSectionList.size() - 1).endTime + " "
+									+ arc.takeoffTime);
+							System.out.println(f.initialTakeoffT+" "+f.isAllowtoBringForward+" "+f.id+"  "+arc.aircraft.id+"   "+f.isIncludedInTimeWindow);
+							for(FlightSection fs:f.flightSectionList){
+								System.out.print("["+fs.startTime+","+fs.endTime+"]  ");
+							}
+							System.out.println();
 							System.exit(1);
 						}
-
-						cf.firstFlight.flightSectionList
-								.get(cf.firstFlight.flightSectionList.size() - 1).connectingFirstArcList.add(ca);
-
+						f.flightSectionList.get(f.flightSectionList.size() - 1).flightArcList.add(arc);
 					}
 
-					// 设置第二个arc
-					// arc.secondArc.isIncludedInConnecting = true;
-					// arc.secondArc.connectingArcList.add(arc);
 					// 乘客容量
-					ca.secondArc.passengerCapacity = aircraft.passengerCapacity;
-					// 减去联程乘客
-					ca.secondArc.passengerCapacity = ca.secondArc.passengerCapacity
-							- cf.secondFlight.connectedPassengerNumber;
-					// 减去转乘乘客
-					ca.secondArc.passengerCapacity = ca.secondArc.passengerCapacity
-							- cf.secondFlight.occupiedSeatsByTransferPassenger;
-					
+					arc.passengerCapacity = aircraft.passengerCapacity;
+
+					// 减去转乘乘客（首先假设所有的转乘乘客都可以成功转乘）
+					arc.passengerCapacity = arc.passengerCapacity - f.occupiedSeatsByTransferPassenger;
+		
+					if(f.isConnectionFeasible){
+						// 如果该航班是联程航班，则代表联程航班已经被取消，所以不需要在考虑对应的联程乘客
+						arc.passengerCapacity = arc.passengerCapacity - f.connectedPassengerNumber;
+					}
+
 					// 减去普通乘客
-					ca.secondArc.fulfilledNormalPassenger = Math.min(ca.secondArc.passengerCapacity, cf.secondFlight.normalPassengerNumber);
-					
-					ca.secondArc.passengerCapacity = ca.secondArc.passengerCapacity- ca.secondArc.fulfilledNormalPassenger;
-					
-					ca.secondArc.flight.itinerary.secondConnectingArcList.add(ca);
-					
-					isFound = false;
-					for (FlightSection currentFlightSection : cf.secondFlight.flightSectionList) {
-						if (ca.secondArc.takeoffTime >= currentFlightSection.startTime
-								&& ca.secondArc.takeoffTime < currentFlightSection.endTime) {
-							currentFlightSection.connectingSecondArcList.add(ca);
-							isFound = true;
+					arc.fulfilledNormalPassenger = Math.min(arc.passengerCapacity, f.normalPassengerNumber);
+					arc.passengerCapacity = arc.passengerCapacity - arc.fulfilledNormalPassenger;
 
-							break;
-						}
+					arc.flight.itinerary.flightArcList.add(arc);
+				}
+
+				arc.calculateCost();
+				aircraft.flightArcList.add(arc);
+				
+				// 加入对应的起降时间点
+
+				if (arc.isWithinAffectedRegionOrigin) {
+					List<FlightArc> faList = scenario.airportTimeFlightArcMap
+							.get(f.leg.originAirport.id + "_" + arc.takeoffTime);
+					faList.add(arc);
+
+				} else if (arc.isWithinAffectedRegionDestination) {
+					List<FlightArc> faList = scenario.airportTimeFlightArcMap
+							.get(f.leg.destinationAirport.id + "_" + arc.landingTime);
+					faList.add(arc);
+
+				}
+
+				// 加入停机约束
+				if (f.leg.destinationAirport.id == 25
+						&& arc.landingTime <= Parameter.airport25_67ParkingLimitStart
+						&& arc.readyTime >= Parameter.airport25_67ParkingLimitEnd) {
+					scenario.airport25ParkingFlightArcList.add(arc);
+				}
+				if (f.leg.destinationAirport.id == 67
+						&& arc.landingTime <= Parameter.airport25_67ParkingLimitStart
+						&& arc.readyTime >= Parameter.airport25_67ParkingLimitEnd) {
+					scenario.airport67ParkingFlightArcList.add(arc);
+				}
+			}		
+		}
+	}
+	
+	public void updateConnectingArc(ConnectingArc ca, Aircraft aircraft, Scenario scenario) {
+		if(ca.isVisited){
+			ca.fromNode = null;
+			ca.toNode = null;
+			
+			ConnectingFlightpair cf = ca.connectingFlightPair;
+
+			if(!cf.firstFlight.isIncludedInTimeWindow){
+				aircraft.connectingArcList.add(ca);
+
+				cf.firstFlight.connectingarcList.add(ca);
+				cf.secondFlight.connectingarcList.add(ca);
+				ca.connectingFlightPair = cf;
+
+				ca.calculateCost();
+				
+				// 加入25和67停机约束
+				if (cf.firstFlight.leg.destinationAirport.id == 25
+						&& ca.firstArc.landingTime <= Parameter.airport25_67ParkingLimitStart
+						&& ca.secondArc.takeoffTime >= Parameter.airport25_67ParkingLimitEnd) {
+					scenario.airport25ClosureConnectingArcList.add(ca);
+				}
+				if (cf.firstFlight.leg.destinationAirport.id == 67
+						&& ca.firstArc.landingTime <= Parameter.airport25_67ParkingLimitStart
+						&& ca.secondArc.takeoffTime >= Parameter.airport25_67ParkingLimitEnd) {
+					scenario.airport25ClosureConnectingArcList.add(ca);
+				}
+			}else{
+							
+				aircraft.connectingArcList.add(ca);
+
+				cf.firstFlight.connectingarcList.add(ca);
+				cf.secondFlight.connectingarcList.add(ca);
+				ca.connectingFlightPair = cf;
+
+				ca.calculateCost();
+				
+				if (ca.firstArc.isWithinAffectedRegionOrigin) {
+					List<ConnectingArc> caList = scenario.airportTimeConnectingArcMap
+							.get(ca.firstArc.flight.leg.originAirport.id + "_" + ca.firstArc.takeoffTime);
+					caList.add(ca);
+				}
+				if (ca.firstArc.isWithinAffectedRegionDestination) {
+					List<ConnectingArc> caList = scenario.airportTimeConnectingArcMap
+							.get(ca.firstArc.flight.leg.destinationAirport.id + "_" + ca.firstArc.landingTime);
+					caList.add(ca);
+				}
+
+				if (ca.secondArc.isWithinAffectedRegionOrigin) {
+					List<ConnectingArc> caList = scenario.airportTimeConnectingArcMap
+							.get(ca.secondArc.flight.leg.originAirport.id + "_" + ca.secondArc.takeoffTime);
+
+					caList.add(ca);
+				}
+				if (ca.secondArc.isWithinAffectedRegionDestination) {
+					List<ConnectingArc> caList = scenario.airportTimeConnectingArcMap
+							.get(ca.secondArc.flight.leg.destinationAirport.id + "_" + ca.secondArc.landingTime);
+					caList.add(ca);
+				}
+
+				// 加入25和67停机约束
+				if (cf.firstFlight.leg.destinationAirport.id == 25
+						&& ca.firstArc.landingTime <= Parameter.airport25_67ParkingLimitStart
+						&& ca.secondArc.takeoffTime >= Parameter.airport25_67ParkingLimitEnd) {
+					scenario.airport25ClosureConnectingArcList.add(ca);
+				}
+				if (cf.firstFlight.leg.destinationAirport.id == 67
+						&& ca.firstArc.landingTime <= Parameter.airport25_67ParkingLimitStart
+						&& ca.secondArc.takeoffTime >= Parameter.airport25_67ParkingLimitEnd) {
+					scenario.airport25ClosureConnectingArcList.add(ca);
+				}
+
+				// 设置第一个arc
+				// arc.firstArc.isIncludedInConnecting = true;
+				// arc.firstArc.connectingArcList.add(arc);
+
+				// 乘客容量
+				ca.firstArc.passengerCapacity = aircraft.passengerCapacity;
+				// 减去联程乘客
+				ca.firstArc.passengerCapacity = ca.firstArc.passengerCapacity
+						- cf.firstFlight.connectedPassengerNumber;
+				// 减去转乘乘客
+				ca.firstArc.passengerCapacity = ca.firstArc.passengerCapacity
+						- cf.firstFlight.occupiedSeatsByTransferPassenger;
+
+				// 减去普通乘客
+				ca.firstArc.fulfilledNormalPassenger = Math.min(ca.firstArc.passengerCapacity, cf.firstFlight.normalPassengerNumber);
+				ca.firstArc.passengerCapacity = ca.firstArc.passengerCapacity
+						- ca.firstArc.fulfilledNormalPassenger;
+				
+				ca.firstArc.flight.itinerary.firstConnectionArcList.add(ca);
+				
+				boolean isFound = false;
+				for (FlightSection currentFlightSection : cf.firstFlight.flightSectionList) {
+					if (ca.firstArc.takeoffTime >= currentFlightSection.startTime
+							&& ca.firstArc.takeoffTime < currentFlightSection.endTime) {
+						// currentFlightSection.flightArcList.add(arc.firstArc);
+						currentFlightSection.connectingFirstArcList.add(ca);
+						isFound = true;
+
+						break;
+					}
+				}
+
+				if (!isFound) {
+					if (ca.firstArc.takeoffTime != cf.firstFlight.flightSectionList
+							.get(cf.firstFlight.flightSectionList.size() - 1).endTime) {
+						System.out.println("no flight section found! " + ca.firstArc.takeoffTime + " "
+								+ cf.firstFlight.flightSectionList
+										.get(cf.firstFlight.flightSectionList.size() - 1).endTime);
+						System.exit(1);
 					}
 
-					if (!isFound) {
-						if (ca.secondArc.takeoffTime != cf.secondFlight.flightSectionList
-								.get(cf.secondFlight.flightSectionList.size() - 1).endTime) {
-							System.out.println("no flight section found 2! " + ca.secondArc.takeoffTime + " "
-									+ cf.secondFlight.flightSectionList
-											.get(cf.secondFlight.flightSectionList.size() - 1).endTime);
-							System.exit(1);
-						}
-						cf.secondFlight.flightSectionList
-								.get(cf.secondFlight.flightSectionList.size() - 1).connectingSecondArcList.add(ca);
+					cf.firstFlight.flightSectionList
+							.get(cf.firstFlight.flightSectionList.size() - 1).connectingFirstArcList.add(ca);
 
+				}
+
+				// 设置第二个arc
+				// arc.secondArc.isIncludedInConnecting = true;
+				// arc.secondArc.connectingArcList.add(arc);
+				// 乘客容量
+				ca.secondArc.passengerCapacity = aircraft.passengerCapacity;
+				// 减去联程乘客
+				ca.secondArc.passengerCapacity = ca.secondArc.passengerCapacity
+						- cf.secondFlight.connectedPassengerNumber;
+				// 减去转乘乘客
+				ca.secondArc.passengerCapacity = ca.secondArc.passengerCapacity
+						- cf.secondFlight.occupiedSeatsByTransferPassenger;
+				
+				// 减去普通乘客
+				ca.secondArc.fulfilledNormalPassenger = Math.min(ca.secondArc.passengerCapacity, cf.secondFlight.normalPassengerNumber);
+				
+				ca.secondArc.passengerCapacity = ca.secondArc.passengerCapacity- ca.secondArc.fulfilledNormalPassenger;
+				
+				ca.secondArc.flight.itinerary.secondConnectingArcList.add(ca);
+				
+				isFound = false;
+				for (FlightSection currentFlightSection : cf.secondFlight.flightSectionList) {
+					if (ca.secondArc.takeoffTime >= currentFlightSection.startTime
+							&& ca.secondArc.takeoffTime < currentFlightSection.endTime) {
+						currentFlightSection.connectingSecondArcList.add(ca);
+						isFound = true;
+
+						break;
 					}
+				}
+
+				if (!isFound) {
+					if (ca.secondArc.takeoffTime != cf.secondFlight.flightSectionList
+							.get(cf.secondFlight.flightSectionList.size() - 1).endTime) {
+						System.out.println("no flight section found 2! " + ca.secondArc.takeoffTime + " "
+								+ cf.secondFlight.flightSectionList
+										.get(cf.secondFlight.flightSectionList.size() - 1).endTime);
+						System.exit(1);
+					}
+					cf.secondFlight.flightSectionList
+							.get(cf.secondFlight.flightSectionList.size() - 1).connectingSecondArcList.add(ca);
+
 				}
 			}
 		}
 	}
-	
 
+	//用另外一種方式來考慮passenger
+	private void updateFlightArcSecondWayToConsiderConnectingPassenger(FlightArc arc, Aircraft aircraft, Scenario scenario) {
+		if(arc.isVisited){
+			arc.fromNode = null;
+			arc.toNode = null;
+			
+			Flight f = arc.flight;
+			if(!f.isIncludedInTimeWindow){
+				//If this flight belongs to a connecting flight pair
+				if(f.isIncludedInConnecting) {
+					if(f.isConnectionFeasible) {
+						//if the connection pair is labeled as feasible, then this flight is treated as a normal flight
+						f.flightarcList.add(arc);
+					}else {
+						//in this case, selection of this arc indicates that both flights in this connecting pair are covered
+						f.flightarcList.add(arc);
+						f.brotherFlight.flightarcList.add(arc);
+					}					
+				}else {
+					f.flightarcList.add(arc);
+				}
+				
+				aircraft.flightArcList.add(arc);
+				arc.calculateCostV2();
+
+				//更新25和67机场的停机约束
+				if (f.leg.destinationAirport.id == 25 && arc.landingTime <= Parameter.airport25_67ParkingLimitStart
+						&& arc.readyTime >= Parameter.airport25_67ParkingLimitEnd) {
+					scenario.airport25ParkingFlightArcList.add(arc);
+				}
+				if (f.leg.destinationAirport.id == 67 && arc.landingTime <= Parameter.airport25_67ParkingLimitStart
+						&& arc.readyTime >= Parameter.airport25_67ParkingLimitEnd) {
+					scenario.airport67ParkingFlightArcList.add(arc);
+				}
+				
+			}else{
+				
+				// 如果是调剂航班，不需要做任何处理
+				if (f.isDeadhead) {
+
+				} else if (f.isStraightened) {
+					// 如果是联程拉直，将该arc加到对应的两段航班中
+					f.connectingFlightpair.firstFlight.flightarcList.add(arc);
+					f.connectingFlightpair.secondFlight.flightarcList.add(arc);
+
+					// 联程拉直航班则没有对应的flight section
+					// 联程拉直乘客容量
+					arc.passengerCapacity = aircraft.passengerCapacity;
+					// 要减去对应的联程乘客
+					arc.passengerCapacity = arc.passengerCapacity - f.connectedPassengerNumber;
+
+					// 其他乘客全部被取消，所以不需要考虑
+					arc.passengerCapacity = Math.max(0, arc.passengerCapacity);
+					
+
+					//add this straightened arc into its corresponding flight section
+					
+					// 将该arc加入到对应的flight section中
+					boolean isFound = false;
+					for (FlightSection currentFlightSection : f.flightSectionList) {
+						if (arc.takeoffTime >= currentFlightSection.startTime
+								&& arc.takeoffTime < currentFlightSection.endTime) {
+							isFound = true;
+							currentFlightSection.flightArcList.add(arc);
+
+							break;
+						}
+					}
+
+					if (!isFound) { // check 是否每个arc都放进了一个section
+						if (f.flightSectionList
+								.get(f.flightSectionList.size() - 1).endTime != arc.takeoffTime) {
+							System.out.println("no flight section found 4!"
+									+ f.flightSectionList.get(f.flightSectionList.size() - 1).endTime + " "
+									+ arc.takeoffTime);
+							System.out.println(f.initialTakeoffT+" "+f.isAllowtoBringForward+" "+f.id+"  "+arc.aircraft.id+"   "+f.isIncludedInTimeWindow);
+							for(FlightSection fs:f.flightSectionList){
+								System.out.print("["+fs.startTime+","+fs.endTime+"]  ");
+							}
+							System.out.println();
+							System.exit(1);
+						}
+						f.flightSectionList.get(f.flightSectionList.size() - 1).flightArcList.add(arc);
+					}
+					
+				} else {
+					//If this flight belongs to a connecting flight pair
+					if(f.isIncludedInConnecting) {
+						if(f.isConnectionFeasible) {
+							//if the connection pair is labeled as feasible, then this flight is treated as a normal flight
+							f.flightarcList.add(arc);
+						}else {
+							//in this case, selection of this arc indicates that both flights in this connecting pair are covered
+							f.flightarcList.add(arc);
+							f.brotherFlight.flightarcList.add(arc);
+						}					
+					}else {
+						f.flightarcList.add(arc);
+					}
+
+					// 将该arc加入到对应的flight section中
+					boolean isFound = false;
+					for (FlightSection currentFlightSection : f.flightSectionList) {
+						if (arc.takeoffTime >= currentFlightSection.startTime
+								&& arc.takeoffTime < currentFlightSection.endTime) {
+							isFound = true;
+							currentFlightSection.flightArcList.add(arc);
+
+							break;
+						}
+					}
+
+					if (!isFound) { // check 是否每个arc都放进了一个section
+						if (f.flightSectionList
+								.get(f.flightSectionList.size() - 1).endTime != arc.takeoffTime) {
+							System.out.println("no flight section found 3!"
+									+ f.flightSectionList.get(f.flightSectionList.size() - 1).endTime + " "
+									+ arc.takeoffTime);
+							System.out.println(f.initialTakeoffT+" "+f.isAllowtoBringForward+" "+f.id+"  "+arc.aircraft.id+"   "+f.isIncludedInTimeWindow);
+							for(FlightSection fs:f.flightSectionList){
+								System.out.print("["+fs.startTime+","+fs.endTime+"]  ");
+							}
+							System.out.println();
+							System.exit(1);
+						}
+						f.flightSectionList.get(f.flightSectionList.size() - 1).flightArcList.add(arc);
+					}
+
+					// 乘客容量
+					arc.passengerCapacity = aircraft.passengerCapacity;
+
+					// 减去转乘乘客（首先假设所有的转乘乘客都可以成功转乘）
+					arc.passengerCapacity = arc.passengerCapacity - f.occupiedSeatsByTransferPassenger;
+		
+					if(f.isConnectionFeasible){
+						// 如果该航班是联程航班，则代表联程航班已经被取消，所以不需要在考虑对应的联程乘客
+						arc.passengerCapacity = arc.passengerCapacity - f.connectedPassengerNumber;
+					}
+
+					// 减去普通乘客
+					arc.fulfilledNormalPassenger = Math.min(arc.passengerCapacity, f.normalPassengerNumber);
+					arc.passengerCapacity = arc.passengerCapacity - arc.fulfilledNormalPassenger;
+
+					arc.flight.itinerary.flightArcList.add(arc);
+				}
+
+				arc.calculateCostV2();
+				aircraft.flightArcList.add(arc);
+				
+				// 加入对应的起降时间点
+
+				if (arc.isWithinAffectedRegionOrigin) {
+					List<FlightArc> faList = scenario.airportTimeFlightArcMap
+							.get(f.leg.originAirport.id + "_" + arc.takeoffTime);
+					faList.add(arc);
+
+				} else if (arc.isWithinAffectedRegionDestination) {
+					List<FlightArc> faList = scenario.airportTimeFlightArcMap
+							.get(f.leg.destinationAirport.id + "_" + arc.landingTime);
+					faList.add(arc);
+
+				}
+
+				// 加入停机约束
+				if (f.leg.destinationAirport.id == 25
+						&& arc.landingTime <= Parameter.airport25_67ParkingLimitStart
+						&& arc.readyTime >= Parameter.airport25_67ParkingLimitEnd) {
+					scenario.airport25ParkingFlightArcList.add(arc);
+				}
+				if (f.leg.destinationAirport.id == 67
+						&& arc.landingTime <= Parameter.airport25_67ParkingLimitStart
+						&& arc.readyTime >= Parameter.airport25_67ParkingLimitEnd) {
+					scenario.airport67ParkingFlightArcList.add(arc);
+				}
+			}		
+		}
+	}
 }

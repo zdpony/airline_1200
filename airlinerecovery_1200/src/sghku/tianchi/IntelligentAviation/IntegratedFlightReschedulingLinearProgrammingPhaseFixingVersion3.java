@@ -38,9 +38,10 @@ import sghku.tianchi.IntelligentAviation.entity.Solution;
 import sghku.tianchi.IntelligentAviation.model.CplexModel;
 import sghku.tianchi.IntelligentAviation.model.CplexModelForPureAircraft;
 import sghku.tianchi.IntelligentAviation.model.IntegratedCplexModel;
+import sghku.tianchi.IntelligentAviation.model.IntegratedCplexModelV3;
 import sghku.tianchi.IntelligentAviation.model.PushForwardCplexModel;
 
-public class IntegratedFlightReschedulingLinearProgrammingPhaseFixingVersion2 {
+public class IntegratedFlightReschedulingLinearProgrammingPhaseFixingVersion3 {
 	public static void main(String[] args) {
 
 		Parameter.isPassengerCostConsidered = true;
@@ -55,9 +56,13 @@ public class IntegratedFlightReschedulingLinearProgrammingPhaseFixingVersion2 {
 		
 	public static void runOneIteration(boolean isFractional, int fixNumber){
 		Scenario scenario = new Scenario(Parameter.EXCEL_FILENAME);
-				
+		
+		
 		FlightDelayLimitGenerator flightDelayLimitGenerator = new FlightDelayLimitGenerator();
 		flightDelayLimitGenerator.setFlightDelayLimit(scenario);
+		for(Flight straightenedFlight:scenario.straightenedFlightList) {
+			flightDelayLimitGenerator.setFlightDelayLimitForStraightenedFlight(straightenedFlight, scenario);
+		}
 		
 		List<Flight> candidateFlightList = new ArrayList<>();
 		List<ConnectingFlightpair> candidateConnectingFlightList = new ArrayList<>();
@@ -85,7 +90,7 @@ public class IntegratedFlightReschedulingLinearProgrammingPhaseFixingVersion2 {
 		}
 		
 		//将所有candidate flight设置为not cancel
-		for(Flight f:candidateFlightList){
+		for(Flight f:scenario.flightList){
 			f.isCancelled = false;
 		}
 		
@@ -115,11 +120,10 @@ public class IntegratedFlightReschedulingLinearProgrammingPhaseFixingVersion2 {
 			Aircraft targetA = candidateAircraftList.get(i);
 
 			for (ConnectingFlightpair cp : targetA.connectingFlightList) {
-				Flight straightenedFlight = targetA.generateStraightenedFlight(cp);
-				if (straightenedFlight != null) {
+				if(cp.isAllowStraighten && !targetA.tabuLegs.contains(cp.straightenLeg)) {
 					//设置联程拉直
+					Flight straightenedFlight = scenario.straightenedFlightMap.get(cp.firstFlight.id+"_"+cp.secondFlight.id);
 					targetA.straightenedFlightList.add(straightenedFlight);
-					flightDelayLimitGenerator.setFlightDelayLimitForStraightenedFlight(straightenedFlight, scenario);
 				}
 			}
 		}
@@ -154,21 +158,18 @@ public class IntegratedFlightReschedulingLinearProgrammingPhaseFixingVersion2 {
 		}
 			
 		//基于目前固定的飞机路径来进一步求解线性松弛模型
-		solver(scenario, scenario.aircraftList, scenario.flightList, candidateConnectingFlightList, isFractional);		
+		solver(scenario, isFractional);		
 		
 		//根据线性松弛模型来确定新的需要固定的飞机路径
 		AircraftPathReader scheduleReader = new AircraftPathReader();
 		scheduleReader.fixAircraftRoute(scenario, fixNumber);	
 		
-		if(!isFractional){
-			OutputResultWithPassenger outputResultWithPassenger = new OutputResultWithPassenger();
-			outputResultWithPassenger.writeResult(scenario, "firstresult828.csv");
-		}
+		
 	}
 	
 	//求解线性松弛模型或者整数规划模型
-	public static void solver(Scenario scenario, List<Aircraft> candidateAircraftList, List<Flight> candidateFlightList, List<ConnectingFlightpair> candidateConnectingFlightList, boolean isFractional) {
-		buildNetwork(scenario, candidateAircraftList, candidateFlightList, 5);
+	public static void solver(Scenario scenario, boolean isFractional) {
+		buildNetwork(scenario, 5);
 		
 		List<FlightSection> flightSectionList = new ArrayList<>();
 		List<FlightSectionItinerary> flightSectionItineraryList = new ArrayList<>();
@@ -185,22 +186,20 @@ public class IntegratedFlightReschedulingLinearProgrammingPhaseFixingVersion2 {
 		//CplexModelForPureAircraft model = new CplexModelForPureAircraft();
 		//Solution solution = model.run(candidateAircraftList, candidateFlightList, new ArrayList(), scenario.airportList,scenario, isFractional, true, false);		
 
-		IntegratedCplexModel model = new IntegratedCplexModel();
-		model.run(candidateAircraftList, candidateFlightList, candidateConnectingFlightList, scenario.airportList, scenario, flightSectionList, scenario.itineraryList, flightSectionItineraryList, isFractional, true);
+		IntegratedCplexModelV3 model = new IntegratedCplexModelV3();
+		model.run(scenario.aircraftList, scenario.flightList, scenario.airportList, scenario, flightSectionList, scenario.itineraryList, flightSectionItineraryList, isFractional, true);
 
 	}
 
 	// 构建时空网络流模型
-	public static void buildNetwork(Scenario scenario, List<Aircraft> candidateAircraftList, List<Flight> candidateFlightList, int gap) {
+	public static void buildNetwork(Scenario scenario, int gap) {
 		
 		// 每一个航班生成arc
 
 		// 为每一个飞机的网络模型生成arc
 		NetworkConstructorBasedOnDelayAndEarlyLimit networkConstructorBasedOnDelayAndEarlyLimit = new NetworkConstructorBasedOnDelayAndEarlyLimit();
-		//ArcChecker.init();
-		//System.out.println("total cost："+ArcChecker.totalCost+"  "+ArcChecker.totalCancelCost);
-	
-		for (Aircraft aircraft : candidateAircraftList) {	
+		
+		for (Aircraft aircraft : scenario.aircraftList) {	
 			List<FlightArc> totalFlightArcList = new ArrayList<>();
 			List<ConnectingArc> totalConnectingArcList = new ArrayList<>();
 		
@@ -211,7 +210,6 @@ public class IntegratedFlightReschedulingLinearProgrammingPhaseFixingVersion2 {
 			}
 			
 			for (Flight f : aircraft.straightenedFlightList) {
-				//System.out.println("straightend flight:"+f.connectingFlightpair.firstFlight.leg.originAirport+"->"+f.connectingFlightpair.secondFlight.leg.destinationAirport+"  "+f.leg.originAirport+"->"+f.leg.destinationAirport);
 				//List<FlightArc> faList = networkConstructor.generateArcForFlightBasedOnFixedSchedule(aircraft, f, scenario);
 				List<FlightArc> faList = networkConstructorBasedOnDelayAndEarlyLimit.generateArcForFlight(aircraft, f, scenario);
 				totalFlightArcList.addAll(faList);
@@ -222,86 +220,14 @@ public class IntegratedFlightReschedulingLinearProgrammingPhaseFixingVersion2 {
 				List<ConnectingArc> caList = networkConstructorBasedOnDelayAndEarlyLimit.generateArcForConnectingFlightPair(aircraft, cf, scenario);
 				totalConnectingArcList.addAll(caList);
 			}
-			/*
-			Map<String,Double> wholeFlightArcSet = ArcChecker.aircraftFlightArcMap.get(aircraft.id);
-			Map<String,Double> wholeStraightenedArcSet = ArcChecker.aircraftStraightenedArcMap.get(aircraft.id);
-			Map<String,Double> wholeConnectingArcSet = ArcChecker.aircraftConnectingArcMap.get(aircraft.id);
 			
-			Set<String> fSet = new HashSet<>();
-			Set<String> sSet = new HashSet<>();
-			Set<String> cSet = new HashSet<>();
+			networkConstructorBasedOnDelayAndEarlyLimit.eliminateArcs(aircraft, scenario.airportList, totalFlightArcList, totalConnectingArcList, scenario, 2);
 			
-			for(int j=totalFlightArcList.size()-1;j>=0;j--){
-				FlightArc arc = totalFlightArcList.get(j);
-				if(arc.flight.isStraightened){
-					String label = arc.flight.connectingFlightpair.firstFlight.id+"_"+arc.flight.connectingFlightpair.secondFlight.id+"_"+arc.takeoffTime;
-					if(!wholeStraightenedArcSet.keySet().contains(label)){
-						totalFlightArcList.remove(j);
-					}else{
-						sSet.add(label);
-						double flow = wholeStraightenedArcSet.get(label);
-						arc.fractionalFlow = flow;
-					}
-				}else{
-					String label = arc.flight.id+"_"+arc.takeoffTime;
-					if(!wholeFlightArcSet.keySet().contains(label)){
-						totalFlightArcList.remove(j);
-					}else{
-						fSet.add(label);
-						double flow = wholeFlightArcSet.get(label);
-						arc.fractionalFlow = flow;
-					}
-				}
-			}
-			
-			for(int j=totalConnectingArcList.size()-1;j>=0;j--){
-				ConnectingArc arc = totalConnectingArcList.get(j);
-				
-				String label = arc.firstArc.flight.id+"_"+arc.secondArc.flight.id+"_"+arc.firstArc.takeoffTime+"_"+arc.secondArc.takeoffTime;
-		
-				if(!wholeConnectingArcSet.keySet().contains(label)){
-					totalConnectingArcList.remove(j);
-				}else{
-					//System.out.println("add label:"+label);
-					cSet.add(label);
-					double flow = wholeConnectingArcSet.get(label);
-					arc.fractionalFlow = flow;
-				}
-			}
-			
-			for(String key:wholeConnectingArcSet.keySet()){
-				if(!cSet.contains(key)){
-					System.out.println("we find error "+key+"  "+aircraft.id);
-				}
-			}
-			for(String key:wholeFlightArcSet.keySet()){
-				if(!fSet.contains(key)){
-					System.out.println("we find error 2 "+key);
-				}
-			}
-			for(String key:wholeStraightenedArcSet.keySet()){
-				if(!sSet.contains(key)){
-					System.out.println("we find error 3 "+key);
-				}
-			}
-			
-			int n1 = totalFlightArcList.size();
-			int n2 = totalConnectingArcList.size();*/
-			networkConstructorBasedOnDelayAndEarlyLimit.eliminateArcs(aircraft, scenario.airportList, totalFlightArcList, totalConnectingArcList, scenario, 1);
-			/*int n3 = aircraft.flightArcList.size();
-			int n4 = aircraft.connectingArcList.size();
-			
-			if(n1 != n3){
-				System.out.println("error 1");
-			}
-			if(n2 != n4){
-				System.out.println("error 2");
-			}*/
 		}
 		
 		
 		NetworkConstructor networkConstructor = new NetworkConstructor();
-		networkConstructor.generateNodes(candidateAircraftList, scenario.airportList, scenario);
+		networkConstructor.generateNodes(scenario.aircraftList, scenario.airportList, scenario);
 	}
 	
 }

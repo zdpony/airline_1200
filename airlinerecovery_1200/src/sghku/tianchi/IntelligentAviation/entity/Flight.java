@@ -110,8 +110,8 @@ public class Flight {
 	//对于联程拉直航班对应的属性
 	public Airport actualOrigin = null;
 	public Airport actualDestination = null;
-	public boolean isStraightenedFirst = false;
-	public boolean isStraightenedSecond = false;
+	//public boolean isStraightenedFirst = false;
+	//public boolean isStraightenedSecond = false;
 	
 	//该航班是否对应于short connection
 	public boolean isShortConnection = false;
